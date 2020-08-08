@@ -3,6 +3,7 @@ const fs = require('fs');
 const luxon = require('luxon');
 const path = require('path');
 const requestPromiseNative = require('request-promise-native');
+const yaml = require('js-yaml');
 
 const shared = require('./shared');
 const settings = require('./settings');
@@ -12,19 +13,26 @@ async function writeFilesPromise(posts, config) {
 	await writeImageFilesPromise(posts, config);
 }
 
-async function processPayloadsPromise(payloads, loadFunc, config) {
+async function processPayloadsPromise(payloads, loadFunc, config, overwrite=false) {
 	const promises = payloads.map(payload => new Promise((resolve, reject) => {
-		setTimeout(async () => {
-			try {
-				const data = await loadFunc(payload.item, config);
-				await writeFile(payload.destinationPath, data);
-				console.log(chalk.green('[OK]') + ' ' + payload.name);
-				resolve();
-			} catch (ex) {
-				console.log(chalk.red('[FAILED]') + ' ' + payload.name + ' ' + chalk.red('(' + ex.toString() + ')'));
-				reject();
-			}
-		}, payload.delay);
+    fs.access(payload.destinationPath, fs.constants.F_OK, (isNew) => {
+      if (!isNew && !overwrite) {
+        console.log(chalk.green('[SKIP]') + ' ' + payload.name);
+        resolve();
+      } else {
+        setTimeout(async () => {
+          try {
+            const data = await loadFunc(payload.item, config);
+            await writeFile(payload.destinationPath, data);
+            console.log(chalk.green('[OK]') + ' ' + payload.name);
+            resolve();
+          } catch (ex) {
+            console.log(chalk.red('[FAILED]') + ' ' + payload.name + ' ' + chalk.red('(' + ex.toString() + ')'));
+            reject();
+          }
+        }, payload.delay);
+      }
+    }); 
 	}));
 	
 	const results = await Promise.allSettled(promises);
@@ -45,22 +53,18 @@ async function writeMarkdownFilesPromise(posts, config ) {
 	// package up posts into payloads
 	const payloads = posts.map((post, index) => ({
 		item: post,
-		name: post.meta.slug,
+		name: post.meta.exportPath,
 		destinationPath: getPostPath(post, config),
 		delay: index * settings.markdown_file_write_delay
 	}));
 
 	console.log('\nSaving posts...');
-	await processPayloadsPromise(payloads, loadMarkdownFilePromise, config);
+	await processPayloadsPromise(payloads, loadMarkdownFilePromise, config, true);
 }
 
 async function loadMarkdownFilePromise(post) {
 	let output = '---\n';
-	Object.entries(post.frontmatter).forEach(pair => {
-		const key = pair[0];
-		const value = (pair[1] || '').replace(/"/g, '\\"');
-		output += key + ': "' + value + '"\n';
-	});
+	output += yaml.safeDump(post.frontmatter);
 	output += '---\n\n' + post.content + '\n';
 	return output;
 }
@@ -124,14 +128,14 @@ function getPostPath(post, config) {
 	}
 
 	// create slug fragment, possibly date prefixed
-	let slugFragment = post.meta.slug;
+	let slugFragment = post.meta.exportPath;
 	if (config.prefixDate) {
 		slugFragment = dt.toFormat('yyyy-LL-dd') + '-' + slugFragment;
 	}
 
 	// use slug fragment as folder or filename as specified
 	if (config.postFolders) {
-		pathSegments.push(slugFragment, 'index.md');
+		pathSegments.push(slugFragment, 'index-' + post.meta.language + '.md');
 	} else {
 		pathSegments.push(slugFragment + '.md');
 	}
