@@ -17,7 +17,7 @@ async function processPayloadsPromise(payloads, loadFunc, config, overwrite=fals
 	const promises = payloads.map(payload => new Promise((resolve, reject) => {
     fs.access(payload.destinationPath, fs.constants.F_OK, (isNew) => {
       if (!isNew && !overwrite) {
-        console.log(chalk.green('[SKIP]') + ' ' + payload.name);
+        // console.debug(chalk.green('[SKIP]') + ' ' + payload.name);
         resolve();
       } else {
         setTimeout(async () => {

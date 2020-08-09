@@ -242,23 +242,29 @@ function collectScrapedImages(data) {
 function mergeImagesIntoPosts(images, posts) {
 	// create lookup table for quicker traversal
 	const postsLookup = posts.reduce((lookup, post) => {
-		lookup[post.meta.id] = post;
+    if (!(post.meta.id in lookup)) {
+      lookup[post.meta.id] = {};
+    }
+		lookup[post.meta.id][post.meta.language] = post;
 		return lookup;
 	}, {});
 
 	images.forEach(image => {
-		const post = postsLookup[image.postId];
-		if (post) {
-			if (image.id === post.meta.coverImageId) {
-				// save cover image filename to frontmatter
-				post.frontmatter.cover = './images/' + shared.getFilenameFromUrl(image.url);
-			}
-			
-			// save (unique) full image URLs for downloading later
-			if (!post.meta.imageUrls.includes(image.url)) {
-				post.meta.imageUrls.push(image.url);
-			}
-		}
+		const posts = postsLookup[image.postId];
+    if (posts) {
+      Object.keys(posts).forEach(language => {
+        const post = posts[language];
+        if (image.id === post.meta.coverImageId) {
+          // save cover image filename to frontmatter
+          post.frontmatter.cover = './images/' + shared.getFilenameFromUrl(image.url);
+        }
+        
+        // save (unique) full image URLs for downloading later
+        if (!post.meta.imageUrls.includes(image.url)) {
+          post.meta.imageUrls.push(image.url);
+        }
+      });
+    }
 	});
 }
 
